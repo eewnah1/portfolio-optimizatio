@@ -2,14 +2,17 @@
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
 import uuid
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # Add repo root to path so `etf_signals` can be imported as a namespace package.
@@ -40,8 +43,11 @@ async def health() -> JSONResponse:
 async def latest_signals() -> JSONResponse:
     if not LATEST_JSON.exists():
         raise HTTPException(status_code=404, detail="No signals have been generated yet.")
-    with open(LATEST_JSON, "r") as f:
-        payload = json.load(f)
+
+    def _load() -> dict:
+        return json.loads(LATEST_JSON.read_text())
+
+    payload = await asyncio.to_thread(_load)
     return JSONResponse(payload)
 
 
@@ -74,6 +80,7 @@ async def predict() -> JSONResponse:
                 },
             }
         except Exception as exc:
+            logger.exception("Signal generation failed")
             jobs[job_id] = {"status": "failed", "error": str(exc)}
 
     asyncio.create_task(_run())
@@ -95,5 +102,5 @@ app.mount("/", StaticFiles(directory=str(ROOT / "app" / "static"), html=True), n
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("PORT", 8010))
+    port = int(os.environ.get("PORT", "8010"))
     uvicorn.run(app, host="0.0.0.0", port=port)

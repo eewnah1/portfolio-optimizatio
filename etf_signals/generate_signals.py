@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate high-conviction next-day ETF signals for the top 100 US-listed ETFs.
 
 The pipeline:
@@ -22,7 +21,7 @@ probability forecasts and high-conviction historical accuracy stats.
 from __future__ import annotations
 
 import json
-import re
+import logging
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +37,8 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeClassifier
 
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parent
 UNIVERSE_PATH = ROOT / "data" / "top100_etf_universe.csv"
@@ -121,7 +122,8 @@ def build_panel(data: pd.DataFrame, tickers: list[str], names: dict[str, str]) -
             df["Ticker"] = ticker
             df["name"] = names.get(ticker, ticker)
             panels.append(df[["date", "Ticker", "name", "close", "volume"]])
-        except Exception:
+        except (LookupError, ValueError, TypeError) as exc:
+            logger.warning("Skipping %s: %s", ticker, exc)
             continue
     return pd.concat(panels, ignore_index=True)
 
@@ -133,7 +135,7 @@ def engineer_features(panel: pd.DataFrame) -> pd.DataFrame:
 
     for horizon in [1, 5, 10, 20, 60]:
         panel[f"return_{horizon}d_pct"] = panel.groupby("Ticker")["close"].transform(
-            lambda s: (s / s.shift(horizon) - 1) * 100
+            lambda s, h=horizon: (s / s.shift(h) - 1) * 100
         )
 
     panel["ma20"] = panel.groupby("Ticker")["close"].transform(lambda s: s.rolling(20).mean())
@@ -231,7 +233,7 @@ def get_feature_columns(panel: pd.DataFrame) -> tuple[list[str], list[str]]:
         "volatility_20d_annualized_pct",
         "volume_ratio_20d_60d",
     ]
-    extras = [c for c in panel.columns if c.startswith("rank_") or c.startswith("rel_")]
+    extras = [c for c in panel.columns if c.startswith(("rank_", "rel_"))]
     macro = [c for c in panel.columns if "_ret_" in c or c in ("vix_level", "vix_1d_chg", "hyg_lqd_ratio_5d")]
     numeric = [c for c in base + extras + macro if c in panel.columns]
     categorical = ["Ticker"]
@@ -537,11 +539,11 @@ def generate() -> dict[str, Any]:
 
     print(f"Historical rows: {len(hist_df)}, live rows: {len(live_df)}")
     print("Training and calibrating high-conviction leaves...")
-    model, leaf_map, summary, records = train_and_calibrate(hist_df, live_df)
+    _model, _leaf_map, summary, records = train_and_calibrate(hist_df, live_df)
 
     summary.update({
-        "universe_total": int(len(universe)),
-        "non_leveraged_count": int(len(non_lev)),
+        "universe_total": len(universe),
+        "non_leveraged_count": len(non_lev),
         "processed_count": len(records),
         "top_10": [r["symbol"] for r in records[:10]],
         "bottom_10": [r["symbol"] for r in records[-10:]],
