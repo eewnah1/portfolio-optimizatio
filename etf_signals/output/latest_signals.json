@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-10T08:57:36.139003+00:00",
+  "generated_at": "2026-08-10T09:34:24.614695+00:00",
   "backtest_period_start": "2026-03-16T00:00:00.000000000",
   "backtest_period_end": "2026-08-06T00:00:00.000000000",
   "backtest_high_conviction_accuracy": 0.923295,
@@ -51,7 +51,7 @@
   ],
   "bucket_quantiles": {
     "q25": -0.336383,
-    "q50": 0.059265,
+    "q50": 0.059259,
     "q75": 0.541438
   },
   "signals": [
@@ -192,7 +192,7 @@
       "return_5d_pct": 0.5863,
       "return_10d_pct": 0.475,
       "return_20d_pct": -0.1601,
-      "return_60d_pct": -0.0113,
+      "return_60d_pct": -0.0114,
       "rsi_14": 50.57,
       "distance_20ma_pct": 0.1463,
       "distance_50ma_pct": -0.2115,
