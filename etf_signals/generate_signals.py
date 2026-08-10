@@ -253,7 +253,7 @@ def build_model(df: pd.DataFrame, numeric: list[str], categorical: list[str]) ->
     )
 
     clf = DecisionTreeClassifier(
-        max_leaf_nodes=80,
+        max_leaf_nodes=64,
         min_samples_leaf=200,
         class_weight="balanced",
         random_state=42,
