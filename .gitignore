@@ -5,3 +5,4 @@ __pycache__/
 .venv
 venv/
 *.log
+build/\n*.egg-info/\n__pycache__/\n.pytest_cache/\n.ruff_cache/
