@@ -12,6 +12,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -22,6 +23,14 @@ OUTPUT_DIR = ROOT / "etf_signals" / "output"
 LATEST_JSON = OUTPUT_DIR / "latest_signals.json"
 
 app = FastAPI(title="ETF Next-Day Signal Screener", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 jobs: dict[str, dict] = {}
 

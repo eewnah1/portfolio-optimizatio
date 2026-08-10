@@ -103,23 +103,15 @@
     const runBtn = document.getElementById('runBtn');
     const summaryEl = document.getElementById('summary');
 
+    const API_BASE = 'https://8342bd395e8e-tunnel-qv30rvog.devinapps.com';
+    const AUTH_HEADER = 'Basic dXNlcjphNTc1NmZiN2EzNzc3YWQ0ZTI5ZmQ0YWY4NGEwMjE1NQ==';
+
     function getAuthHeader() {
-      const u = new URL(window.location.href);
-      if (u.username && u.password) {
-        return 'Basic ' + btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
-      }
-      return null;
+      return AUTH_HEADER;
     }
 
     function apiUrl(path) {
-      return window.location.origin + path;
-    }
-
-    function fetchOpts(extra = {}) {
-      const headers = {};
-      const auth = getAuthHeader();
-      if (auth) headers['Authorization'] = auth;
-      return { ...extra, credentials: 'include', headers };
+      return API_BASE + path;
     }
 
     function setStatus(msg, type = 'info') {
@@ -128,7 +120,7 @@
     }
 
     async function fetchLatest() {
-      const res = await fetch(apiUrl('/api/v1/signals/latest'), fetchOpts());
+      const res = await fetch(apiUrl('/api/v1/signals/latest'), { mode: 'cors', headers: { 'Authorization': getAuthHeader() } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     }
@@ -210,7 +202,7 @@
       const interval = setInterval(async () => {
         attempts++;
         try {
-          const res = await fetch(apiUrl(`/api/v1/jobs/${jobId}`), fetchOpts());
+          const res = await fetch(apiUrl(`/api/v1/jobs/${jobId}`), { mode: 'cors', headers: { 'Authorization': getAuthHeader() } });
           const status = await res.json();
           if (status.status === 'completed') {
             clearInterval(interval);
@@ -245,7 +237,7 @@
       runBtn.textContent = 'Running...';
       setStatus('Starting prediction run...');
       try {
-        const res = await fetch(apiUrl('/api/v1/predict'), fetchOpts({ method: 'POST' }));
+        const res = await fetch(apiUrl('/api/v1/predict'), { mode: 'cors', method: 'POST', headers: { 'Authorization': getAuthHeader() } });
         const data = await res.json();
         if (data.status === 'running') {
           pollJob(data.job_id);
