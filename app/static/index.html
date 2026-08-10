@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETF Next-Day Signal Screener</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #0b1120; color: #e2e8f0; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 0.75rem; }
+    .badge-major-up { background: #064e3b; color: #6ee7b7; }
+    .badge-mild-up { background: #064e3b; color: #a7f3d0; }
+    .badge-mild-down { background: #7f1d1d; color: #fecaca; }
+    .badge-major-down { background: #7f1d1d; color: #fca5a5; }
+    .bar { height: 0.5rem; border-radius: 999px; }
+  </style>
+</head>
+<body class="min-h-screen p-6">
+  <div class="max-w-7xl mx-auto space-y-6">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-white">ETF Next-Day Signal Screener</h1>
+        <p class="text-slate-400 text-sm mt-1">Non-leveraged top 100 US-listed ETFs (DJIA / NYSE). Directional probability forecasts only.</p>
+      </div>
+      <button id="runBtn" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg shadow transition">
+        Run prediction
+      </button>
+    </div>
+
+    <div id="status" class="text-sm text-slate-400"></div>
+
+    <div id="summary" class="hidden grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="card p-4">
+        <div class="text-slate-400 text-xs uppercase tracking-wide">Generated</div>
+        <div id="genAt" class="text-xl font-semibold mt-1">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-slate-400 text-xs uppercase tracking-wide">HC Backtest Accuracy</div>
+        <div id="hcAcc" class="text-xl font-semibold mt-1 text-emerald-400">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-slate-400 text-xs uppercase tracking-wide">HC Signals (test set)</div>
+        <div id="hcN" class="text-xl font-semibold mt-1">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-slate-400 text-xs uppercase tracking-wide">Processed ETFs</div>
+        <div id="procCount" class="text-xl font-semibold mt-1">-</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card p-5">
+        <h2 class="text-lg font-semibold text-white mb-3">Top 10 (strongest next-day outlook)</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-slate-400 border-b border-slate-700">
+              <tr><th class="text-left py-2">#</th><th class="text-left">Ticker</th><th class="text-left">Prediction</th><th class="text-right">Conf</th></tr>
+            </thead>
+            <tbody id="top10" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card p-5">
+        <h2 class="text-lg font-semibold text-white mb-3">Bottom 10 (weakest next-day outlook)</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-slate-400 border-b border-slate-700">
+              <tr><th class="text-left py-2">#</th><th class="text-left">Ticker</th><th class="text-left">Prediction</th><th class="text-right">Conf</th></tr>
+            </thead>
+            <tbody id="bottom10" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <h2 class="text-lg font-semibold text-white mb-3">All Signals</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-slate-400 border-b border-slate-700">
+            <tr>
+              <th class="text-left py-2">Rank</th>
+              <th class="text-left">Ticker</th>
+              <th class="text-left">Name</th>
+              <th class="text-left">Date</th>
+              <th class="text-left">Prediction</th>
+              <th class="text-right">Confidence</th>
+              <th class="text-center">High Conviction</th>
+              <th class="text-right">Hist. Accuracy</th>
+              <th class="text-right">1D Ret %</th>
+              <th class="text-right">RSI</th>
+              <th class="text-right">20MA %</th>
+            </tr>
+          </thead>
+          <tbody id="signalsBody" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const runBtn = document.getElementById('runBtn');
+    const summaryEl = document.getElementById('summary');
+
+    function getAuthHeader() {
+      const u = new URL(window.location.href);
+      if (u.username && u.password) {
+        return 'Basic ' + btoa(decodeURIComponent(u.username) + ':' + decodeURIComponent(u.password));
+      }
+      return '';
+    }
+
+    function apiUrl(path) {
+      return window.location.origin + path;
+    }
+
+    function setStatus(msg, type = 'info') {
+      statusEl.textContent = msg;
+      statusEl.className = 'text-sm ' + (type === 'error' ? 'text-red-400' : type === 'success' ? 'text-emerald-400' : 'text-slate-400');
+    }
+
+    async function fetchLatest() {
+      const res = await fetch(apiUrl('/api/v1/signals/latest'), { headers: { 'Authorization': getAuthHeader() } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }
+
+    function badgeClass(pred) {
+      if (pred === 'Major Up') return 'badge-major-up';
+      if (pred === 'Mildly Up') return 'badge-mild-up';
+      if (pred === 'Mildly Down') return 'badge-mild-down';
+      if (pred === 'Major Down') return 'badge-major-down';
+      return 'bg-slate-700 text-slate-200';
+    }
+
+    function fmtPct(n) { return n == null ? '-' : Number(n).toFixed(2) + '%'; }
+
+    function renderSummary(data) {
+      summaryEl.classList.remove('hidden');
+      document.getElementById('genAt').textContent = new Date(data.generated_at).toLocaleString();
+      document.getElementById('hcAcc').textContent = (data.backtest_high_conviction_accuracy * 100).toFixed(2) + '%';
+      document.getElementById('hcN').textContent = data.backtest_high_conviction_signals;
+      document.getElementById('procCount').textContent = data.processed_count;
+    }
+
+    function renderList(tbodyId, tickers, data) {
+      const tbody = document.getElementById(tbodyId);
+      tbody.innerHTML = '';
+      const bySym = Object.fromEntries(data.signals.map(s => [s.symbol, s]));
+      tickers.forEach((t, i) => {
+        const s = bySym[t] || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-2 text-slate-400">${i + 1}</td>
+          <td class="font-medium text-white">${t}</td>
+          <td><span class="px-2 py-0.5 rounded text-xs font-medium ${badgeClass(s.next_day_prediction)}">${s.next_day_prediction || 'N/A'}</span></td>
+          <td class="text-right text-slate-300">${s.confidence ? (s.confidence * 100).toFixed(1) + '%' : '-'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('signalsBody');
+      tbody.innerHTML = '';
+      data.signals.forEach((s, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-2 text-slate-400">${s.rank || i + 1}</td>
+          <td class="font-medium text-white">${s.symbol}</td>
+          <td class="text-slate-300">${s.name}</td>
+          <td class="text-slate-400">${s.date}</td>
+          <td><span class="px-2 py-0.5 rounded text-xs font-medium ${badgeClass(s.next_day_prediction)}">${s.next_day_prediction}</span></td>
+          <td class="text-right text-slate-300">${(s.confidence * 100).toFixed(1)}%</td>
+          <td class="text-center">${s.high_conviction ? '<span class="text-emerald-400 font-semibold">Yes</span>' : '<span class="text-slate-500">No</span>'}</td>
+          <td class="text-right text-slate-300">${s.historical_accuracy != null ? (s.historical_accuracy * 100).toFixed(1) + '%' : '-'}</td>
+          <td class="text-right text-slate-300">${fmtPct(s.return_1d_pct)}</td>
+          <td class="text-right text-slate-300">${s.rsi_14 != null ? s.rsi_14.toFixed(2) : '-'}</td>
+          <td class="text-right text-slate-300">${fmtPct(s.distance_20ma_pct)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function load() {
+      setStatus('Loading latest signals...');
+      try {
+        const data = await fetchLatest();
+        renderSummary(data);
+        renderList('top10', data.top_10, data);
+        renderList('bottom10', data.bottom_10, data);
+        renderTable(data);
+        setStatus('Signals loaded.', 'success');
+      } catch (e) {
+        setStatus('No signals available. Click "Run prediction" to generate the first set.', 'info');
+      }
+    }
+
+    async function pollJob(jobId) {
+      let attempts = 0;
+      const maxAttempts = 120; // ~ 2 minutes
+      const interval = setInterval(async () => {
+        attempts++;
+        try {
+          const res = await fetch(apiUrl(`/api/v1/jobs/${jobId}`), { headers: { 'Authorization': getAuthHeader() } });
+          const status = await res.json();
+          if (status.status === 'completed') {
+            clearInterval(interval);
+            runBtn.disabled = false;
+            runBtn.textContent = 'Run prediction';
+            await load();
+            setStatus('Prediction complete.', 'success');
+            return;
+          }
+          if (status.status === 'failed') {
+            clearInterval(interval);
+            runBtn.disabled = false;
+            runBtn.textContent = 'Run prediction';
+            setStatus('Prediction failed: ' + (status.error || 'unknown error'), 'error');
+            return;
+          }
+          setStatus(`Prediction running... (${attempts}s)`);
+          if (attempts >= maxAttempts) {
+            clearInterval(interval);
+            runBtn.disabled = false;
+            runBtn.textContent = 'Run prediction';
+            setStatus('Prediction is taking longer than expected. Refresh the page later.', 'error');
+          }
+        } catch (e) {
+          setStatus('Error polling job status: ' + e.message, 'error');
+        }
+      }, 1000);
+    }
+
+    runBtn.addEventListener('click', async () => {
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running...';
+      setStatus('Starting prediction run...');
+      try {
+        const res = await fetch(apiUrl('/api/v1/predict'), { method: 'POST', headers: { 'Authorization': getAuthHeader() } });
+        const data = await res.json();
+        if (data.status === 'running') {
+          pollJob(data.job_id);
+        } else {
+          runBtn.disabled = false;
+          runBtn.textContent = 'Run prediction';
+          await load();
+        }
+      } catch (e) {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run prediction';
+        setStatus('Failed to start prediction: ' + e.message, 'error');
+      }
+    });
+
+    load();
+  </script>
+</body>
+</html>
